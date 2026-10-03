@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -83,4 +84,7 @@ def test_server_stops_by_itself_when_the_window_process_dies(tmp_path):
     deadline = time.monotonic() + 30
     while processes_mentioning(f"--serve {port}") and time.monotonic() < deadline:
         time.sleep(0.1)
-    assert processes_mentioning(f"--serve {port}") == [], "the server outlived its window process"
+    survivors = processes_mentioning(f"--serve {port}")
+    for survivor in survivors:  # a failing run must not leave a server behind either
+        os.kill(int(survivor), signal.SIGTERM)
+    assert survivors == [], "the server outlived its window process"

@@ -60,13 +60,17 @@ def nearest(colour: tuple[int, int, int], palette: dict[str, tuple[int, int, int
 
 
 def processes_mentioning(text: str) -> list[str]:
-    """PIDs whose command line contains `text` (/proc on Linux, CIM on Windows, pgrep elsewhere)."""
+    """PIDs whose command line contains `text` (/proc on Linux, CIM on Windows, pgrep elsewhere).
+
+    A search that fails raises: an empty answer must mean "none running", never "could not look"."""
     if sys.platform == "win32":
         query = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
                  f"$_.CommandLine.Contains('{text}') -and $_.ProcessId -ne $PID }} | "
                  "ForEach-Object { $_.ProcessId }")
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", query], capture_output=True, text=True).stdout
-        return [pid for pid in out.split() if pid.isdigit()]
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", query], capture_output=True, text=True)
+        if out.returncode != 0:
+            raise RuntimeError(f"process search failed: {out.stderr.strip()}")
+        return [pid for pid in out.stdout.split() if pid.isdigit()]
     proc = Path("/proc")
     if proc.is_dir():
         found = []
@@ -77,4 +81,9 @@ def processes_mentioning(text: str) -> list[str]:
             except OSError:
                 continue
         return found
-    return subprocess.run(["pgrep", "-f", text], capture_output=True, text=True).stdout.split()
+    # "--" ends pgrep's options: a pattern such as "--serve 8501" would otherwise be read as
+    # an option, and pgrep would exit with a usage error and print nothing.
+    out = subprocess.run(["pgrep", "-f", "--", text], capture_output=True, text=True)
+    if out.returncode > 1:  # 0 found, 1 none found, anything else: the search itself failed
+        raise RuntimeError(f"process search failed: {out.stderr.strip()}")
+    return out.stdout.split()
