@@ -3,7 +3,10 @@
 #   ReelFramer-macOS:   ReelFramer.dmg (Apple Silicon; built on macOS 14, so it runs on 14 and newer)
 # Each job runs the whole test suite on that system, then the packaged app's --self-test
 # (bundled ffmpeg, text shaping, per-script caption fonts, colour emoji, renders with sound,
-# HTTPS), and uploads the app with the self-test report.
+# HTTPS), then desktop/ui_check.py (the packaged app's page in the system's browser engine:
+# start-up and page timings, and one click on Create right after typing a link), and uploads
+# the app with the self-test report; the UI check's report, screenshots and server logs are
+# uploaded as ui-check-<system> even when it fails.
 # Start it from the Actions tab (Run workflow, pick the platform) or by pushing a tag like v1.0.1.
 # On private repositories GitHub bills macOS minutes at 10x and Windows at 2x.
 name: desktop apps
@@ -54,6 +57,17 @@ jobs:
           Get-Content selftest.json
           if ($run.ExitCode -ne 0) { Write-Host "self-test failed"; exit 1 }
           if (-not (Get-Content selftest.json | ConvertFrom-Json).https.StartsWith("ok")) { Write-Host "HTTPS failed"; exit 1 }
+      - name: UI check of the packaged app (Edge, like the app's WebView2 window)
+        run: |
+          $env:PATH = "$PWD\desktop\dist\Reel Framer\_internal\ffmpeg\bin;$env:PATH"  # as the window process sets it
+          .venv-win\Scripts\python.exe desktop\ui_check.py "desktop\dist\Reel Framer\Reel Framer.exe" ui-check\report.json
+          if ($LASTEXITCODE) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-check-windows
+          path: ui-check/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: ReelFramer-Windows
@@ -88,6 +102,16 @@ jobs:
           "desktop/dist/Reel Framer.app/Contents/MacOS/Reel Framer" --self-test "$PWD/selftest.json" || status=$?
           cat selftest.json
           [ "$status" -eq 0 ] && grep -q '"https": "ok' selftest.json
+      - name: UI check of the packaged app (Chrome)
+        run: |
+          PATH="$PWD/desktop/dist/Reel Framer.app/Contents/Frameworks/ffmpeg/bin:$PATH" \
+            .venv/bin/python desktop/ui_check.py "desktop/dist/Reel Framer.app/Contents/MacOS/Reel Framer" ui-check/report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-check-macos
+          path: ui-check/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: ReelFramer-macOS

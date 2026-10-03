@@ -1,2 +1,3 @@
 pyinstaller
 pywebview
+playwright   # desktop/ui_check.py after a build (not part of the app)
