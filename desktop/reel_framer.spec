@@ -14,7 +14,8 @@
 # - Streamlit with its web frontend and package metadata (it reads its own version at start-up);
 # - pywebview (its hook brings the WebView2 DLLs on Windows);
 # - data: app.py, .streamlit/config.toml, defaults/, and the self-contained ffmpeg.
-# On macOS the minimum system version is the one the bundled ffmpeg needs (ffmpeg/minos.txt).
+# On macOS the minimum system version is the one the bundled ffmpeg needs (ffmpeg/minos.txt);
+# the version is desktop/VERSION, the one place it is set (the Windows installer reads it too).
 import subprocess
 import sys
 from pathlib import Path
@@ -57,7 +58,7 @@ if MAC:
         icon=str(BUILD / "ReelFramer.icns"),
         bundle_identifier="ai.metty.reelframer",
         info_plist={
-            "CFBundleShortVersionString": "1.0.0",
+            "CFBundleShortVersionString": (ROOT / "desktop" / "VERSION").read_text().strip(),
             "CFBundleVersion": BUILD_NUMBER,
             "LSMinimumSystemVersion": (BUILD / "ffmpeg" / "minos.txt").read_text().strip(),
             "NSHighResolutionCapable": True,

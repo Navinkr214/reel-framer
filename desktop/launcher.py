@@ -4,10 +4,12 @@ Opening the app:
   1. asks the operating system for a free port on 127.0.0.1 (nothing outside this
      computer can reach it);
   2. starts a second copy of itself with `--serve PORT`, which runs the Streamlit app
-     in its own process group, with the bundled ffmpeg first on PATH;
-  3. opens the window straight away on a "Starting" page and loads the app as soon
-     as the server answers its health check - or shows the server's log if it stops
-     first;
+     in its own process group, with the bundled ffmpeg first on PATH; before it answers,
+     that copy imports the app, reads the installed fonts and tests the video encoders
+     (warm_up), so the page opens ready instead of filling in while it is used;
+  3. opens the window straight away on a "Starting" page that counts the seconds, and
+     loads the app as soon as the server answers its health check - or shows the
+     server's log if it stops first;
   4. when the window closes, stops the server and everything it started (ffmpeg too).
      If this process ends any other way (Quit, Force Quit, a crash), the server notices
      on its own: it holds the read end of a pipe whose only writer is this process, and
@@ -33,7 +35,9 @@ Built into the app by desktop/build_mac.sh / desktop/build_windows.ps1 (PyInstal
 """
 from __future__ import annotations
 
+import ast
 import html
+import io
 import json
 import os
 import shutil
@@ -101,7 +105,12 @@ def prefer_updated_packages() -> None:
 def stop_with_parent() -> None:
     """Stop this server (and what it started) once the window process's pipe closes."""
     def watch() -> None:
-        sys.stdin.buffer.read()  # returns only when the parent's end of the pipe is gone
+        # Raw reads of the descriptor, not sys.stdin.buffer.read(): a thread waiting inside
+        # stdin's buffered reader holds its lock, and when the server then stopped normally
+        # Python aborted at exit ("could not acquire lock for <stdin> at interpreter
+        # shutdown"), a crash report on every quit of the app.
+        while os.read(sys.stdin.fileno(), io.DEFAULT_BUFFER_SIZE):
+            pass  # the window process never writes: this ends when its end of the pipe is gone
         if os.name == "posix":
             os.killpg(os.getpgrp(), signal.SIGTERM)
         else:  # this process and everything it started (ffmpeg renders)
@@ -120,6 +129,32 @@ def hide_console_windows() -> None:
         original(self, *args, **kwargs)
 
     subprocess.Popen.__init__ = init
+
+
+def warm_up() -> str:
+    """The app's slow first-use work, done before the server answers so that the window keeps
+    its "Starting" page up instead of showing a page that is still filling in: import what
+    app.py imports, read the installed fonts (on Windows kept on disk after the first start)
+    and test which video encoders work on this computer. Returns a timing line for the log."""
+    sys.path.insert(0, str(RESOURCES))
+    parts: list[str] = []
+
+    def timed(label: str, work) -> None:
+        began = time.monotonic()
+        detail = work()
+        parts.append(f"{label} {time.monotonic() - began:.1f} s" + (f" ({detail})" if detail else ""))
+
+    def import_app_modules() -> None:  # app.py's own import statements, so the list never drifts
+        tree = ast.parse((RESOURCES / "app.py").read_text(encoding="utf-8"))
+        imports = [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
+        exec(compile(ast.Module(body=imports, type_ignores=[]), "app.py", "exec"), {})
+
+    timed("imports", import_app_modules)
+    from reel_framer import encoder
+    from reel_framer.text import backend
+    timed("fonts", lambda: f"{len(backend.list_faces())} faces")
+    timed("encoders", lambda: ", ".join(encoder.video_encoders()))
+    return "warm-up: " + ", ".join(parts)
 
 
 def serve(port: int) -> None:
@@ -142,6 +177,7 @@ def serve(port: int) -> None:
         "client.toolbarMode": "minimal",    # no "Deploy" button in a desktop window
     }
     bootstrap.load_config_options(flag_options=flags)
+    print(warm_up(), flush=True)  # before the server answers its health check
     bootstrap.run(str(RESOURCES / "app.py"), False, [], flags)
 
 
@@ -257,6 +293,12 @@ body{{margin:0;height:100vh;display:flex;align-items:center;justify-content:cent
 font:15px -apple-system,'Segoe UI',sans-serif;background:#0E1117;color:#FAFAFA}}
 main{{max-width:760px;padding:24px}} pre{{white-space:pre-wrap;font-size:12px;opacity:.8}}
 </style></head><body><main>{body}</main></body></html>"""
+# Shown until the server answers. The seconds count up, so a slow start (the warm-up) never
+# looks frozen.
+_STARTING = ('<p>Starting Reel Framer… <span id="seconds"></span></p>'
+             '<p style="opacity:.7">The first start takes the longest.</p>'
+             '<script>var s = 0; setInterval(function () {'
+             ' document.getElementById("seconds").textContent = ++s + " s"; }, 1000);</script>')
 
 
 def main() -> None:
@@ -269,7 +311,7 @@ def main() -> None:
     screen = webview.screens[0] if webview.screens else None
     size = {"width": int(screen.width * WINDOW_SHARE), "height": int(screen.height * WINDOW_SHARE)} if screen else {}
     webview.settings["ALLOW_DOWNLOADS"] = True
-    window = webview.create_window(APP_NAME, html=_PAGE.format(body="<p>Starting Reel Framer…</p>"),
+    window = webview.create_window(APP_NAME, html=_PAGE.format(body=_STARTING),
                                    text_select=True, **size)
 
     def load_when_ready() -> None:

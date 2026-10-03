@@ -8,7 +8,7 @@
 #define AppName "Reel Framer"
 #define AppVersion GetEnv("REEL_FRAMER_VERSION")
 #if AppVersion == ""
-  #define AppVersion "1.0.0"
+  #error REEL_FRAMER_VERSION is not set: build with desktop\build_windows.ps1, which reads desktop\VERSION
 #endif
 
 [Setup]

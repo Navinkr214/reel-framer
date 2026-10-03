@@ -77,7 +77,10 @@ workflow**, and download *ReelFramer-Windows* from the finished run:
 - `ReelFramer-portable.zip` runs from any folder without installing.
 
 The same workflow can build the Mac `.dmg` too (on macOS 14, so that copy runs on macOS 14 and
-newer). Every build runs the whole test suite on that system plus the app's own `--self-test`.
+newer). Every build runs the whole test suite on that system, the app's own `--self-test`, and
+`desktop/ui_check.py`: the packaged app's page in that system's browser engine, timing the start
+and checking that one click on **Create videos** right after typing a link starts the job. The
+apps' version number is `desktop/VERSION`.
 
 What is the same on both:
 - Settings, banners and downloads live in the user's app-data folder (`~/Library/Application
@@ -93,6 +96,10 @@ What is the same on both:
 - Captions in any language: macOS picks fonts per script itself; on Windows the app follows the
   Windows UI font and Windows' own font-link fallback list, then any installed font that has the
   characters (colour emoji fonts first for emoji).
+- Opening: the window shows *Starting Reel Framer…* and counts the seconds while the app loads,
+  reads the installed fonts (Windows keeps what it read for later starts) and tests the
+  encoders; the page then opens ready to use. `server.log` in the app-data folder has the
+  timings (the `warm-up:` line).
 - `Reel Framer --self-test report.json` checks an installed app without opening its window.
 
 Not signed yet, so both systems warn on the first open of a downloaded copy:

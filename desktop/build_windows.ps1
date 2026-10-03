@@ -23,6 +23,7 @@ Write-Host "3/4 app"
 if ($LASTEXITCODE) { throw "PyInstaller failed" }
 
 Write-Host "4/4 zip and installer"
+$env:REEL_FRAMER_VERSION = (Get-Content desktop\VERSION -Raw).Trim()  # the one place the version is set
 Compress-Archive -Path "desktop\dist\Reel Framer" -DestinationPath desktop\dist\ReelFramer-portable.zip -Force
 $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
 if (-not $iscc) { $iscc = Get-Item "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue }

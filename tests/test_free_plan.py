@@ -1,6 +1,6 @@
 """Hosting without a disk (Render's free plan): starting settings from defaults/,
 a host-provided login file, uploads streamed to disk, a preview that waits for a
-click on a sub-one-CPU server."""
+click on a sub-one-CPU server and reads its video's length once, not on every refresh."""
 from __future__ import annotations
 
 import io
@@ -13,6 +13,7 @@ from streamlit.testing.v1 import AppTest
 from reel_framer import assets, downloader, hosting, paths, pipeline, server_defaults
 from reel_framer import settings as store
 from reel_framer.settings import Settings
+from reel_framer.ui import settings_tab
 
 from .conftest import make_video, solid_png
 
@@ -118,6 +119,20 @@ def test_preview_redraws_by_itself_with_whole_cpus(tmp_path, monkeypatch):
     monkeypatch.setattr(hosting, "fractional_cpu", lambda *a: False)
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert at.session_state["preview"][1]
+
+
+def test_preview_reads_the_video_length_once_not_on_every_refresh(tmp_path, monkeypatch):
+    # Every click anywhere on the page reruns the Settings tab too; an ffprobe run each time
+    # cost seconds per click on a Windows laptop.
+    make_video(paths.downloads_dir() / "source.mp4", 320, 568, 1)
+    monkeypatch.delenv("APP_PASSWORD", raising=False)
+    monkeypatch.delenv("REEL_FRAMER_HOSTED", raising=False)
+    probed: list[Path] = []
+    real_probe = settings_tab.probe
+    monkeypatch.setattr(settings_tab, "probe", lambda path: probed.append(path) or real_probe(path))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    at.run()  # a refresh with nothing changed
+    assert len(probed) == 1
 
 
 def test_shipped_defaults_load(monkeypatch):

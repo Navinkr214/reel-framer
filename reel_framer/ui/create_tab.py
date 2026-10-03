@@ -55,7 +55,13 @@ def render() -> None:
         "…or upload video files", accept_multiple_files=True, key=f"sources_{state.sources_round}"
     ) or []
     links = [line.strip() for line in links_text.splitlines() if line.strip()]
-    if st.button("Create videos", type="primary", disabled=not (links or uploads)):
+    # Never greyed out: a typed or pasted link reaches this script only when its box loses
+    # focus (or on Ctrl+Enter), and clicking this button is what takes the focus away, so a
+    # button disabled until the link had arrived swallowed that first click.
+    clicked = st.button("Create videos", type="primary")
+    if clicked and not (links or uploads):
+        st.warning("Paste a link or choose a video file first.")
+    elif clicked:
         for link in links:
             _run_item(link, functools.partial(_link_sources, link, current), current, is_link=True)
         for upload in uploads:

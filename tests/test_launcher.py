@@ -39,6 +39,11 @@ def test_server_starts_answers_and_stops_with_nothing_left(launcher, tmp_path, m
         launcher.stop_server(server)
     assert server.poll() is not None
     assert processes_mentioning(f"--serve {port}") == []
+    log = (tmp_path / "server.log").read_text(encoding="utf-8")
+    # A server that crashes on its way out leaves a crash report on every quit of the app
+    # (macOS also offers to reopen it): a normal stop must end without one.
+    assert "Fatal Python error" not in log and server.returncode != -signal.SIGABRT, log
+    assert "warm-up:" in log  # the slow first-use work ran before the server answered
 
 
 def test_a_server_that_cannot_start_is_reported(launcher, tmp_path, monkeypatch):

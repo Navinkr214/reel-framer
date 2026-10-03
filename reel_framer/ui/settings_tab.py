@@ -16,7 +16,8 @@ widget's own state priority over the value it is created with.
 
 The preview is redrawn only when the source, the time or the settings change,
 and on servers with less than one CPU only when asked (hosting.fractional_cpu);
-the latest one is kept in the session (one image per browser session).
+the latest one is kept in the session (one image per browser session). The
+source's length is read once per version of the file, not on every rerun.
 
 Not in here: what the values do (pipeline.py) or the Settings model (settings.py).
 Called by: app.py.
@@ -27,6 +28,7 @@ import io
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Callable
 
 import streamlit as st
@@ -393,6 +395,14 @@ def _maintenance(s: Settings) -> None:
 
 # --- Preview -----------------------------------------------------------------
 
+@st.cache_data(show_spinner=False)
+def _duration(path: str, size: int, mtime_ns: int) -> float:
+    """The video's length, read once per version of the file (size and modification time are
+    the key): this tab reruns on every click anywhere on the page, and an ffprobe run each
+    time cost seconds per click on a Windows laptop."""
+    return probe(Path(path)).duration or 0.0
+
+
 def _preview(s: Settings) -> None:
     st.markdown(_STICKY_PREVIEW, unsafe_allow_html=True)
     st.subheader("Preview")
@@ -403,7 +413,8 @@ def _preview(s: Settings) -> None:
         return
     source = st.selectbox("Video", sources, format_func=lambda p: p.name, key="preview_source")
     try:
-        duration = probe(source).duration or 0.0
+        stat = source.stat()
+        duration = _duration(str(source), stat.st_size, stat.st_mtime_ns)
     except ProbeError as exc:
         st.error(str(exc))
         return

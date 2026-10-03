@@ -8,6 +8,7 @@
 # the app with the self-test report; the UI check's report, screenshots and server logs are
 # uploaded as ui-check-<system> even when it fails.
 # Start it from the Actions tab (Run workflow, pick the platform) or by pushing a tag like v1.0.1.
+# The apps' version is desktop/VERSION.
 # On private repositories GitHub bills macOS minutes at 10x and Windows at 2x.
 name: desktop apps
 on:
@@ -20,9 +21,6 @@ on:
         default: both
   push:
     tags: ["v*"]
-
-env:
-  REEL_FRAMER_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
 
 jobs:
   windows:
