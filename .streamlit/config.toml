@@ -1,0 +1,8 @@
+# Read by `streamlit run` when started from this folder (run.sh does).
+[server]
+# Only this computer can open the app. It can use your browser's Instagram login,
+# so it should not be reachable from the network. Remove this line to share it on your LAN.
+address = "localhost"
+
+[browser]
+gatherUsageStats = false

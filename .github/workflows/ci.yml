@@ -1,0 +1,38 @@
+# Builds the same image Render builds and checks it on Linux:
+# every test inside the image (Debian's ffmpeg, fontconfig fonts; none may be skipped there),
+# then the real server: it starts as the unprivileged user and answers Render's health check.
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t reel-framer .
+
+      - name: Run the tests inside the image
+        run: |
+          docker run --rm --entrypoint sh -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$PWD/tests:/app/tests:ro" reel-framer -c \
+            'pip install --no-cache-dir --quiet pytest && python -m pytest -q -rs -p no:cacheprovider tests' \
+            | tee pytest.txt
+          if grep -q SKIPPED pytest.txt; then echo "Tests were skipped on Linux"; exit 1; fi
+
+      - name: Start the server the way Render does
+        run: |
+          docker run -d --name app -e APP_PASSWORD=ci -e PORT=8080 -p 8080:8080 reel-framer
+          timeout 120 sh -c 'until curl -fsS http://localhost:8080/_stcore/health; do sleep 2; done'
+          echo
+          docker top app -eo user,args | tee top.txt
+          grep streamlit top.txt | grep -qv '^root' || { echo "Streamlit is not running as the app user"; exit 1; }
+          test "$(docker exec app stat -c %U /var/data/reel_framer)" = app
+
+      - name: Server log
+        if: always()
+        run: docker logs app || true

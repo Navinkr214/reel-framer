@@ -1,0 +1,5 @@
+streamlit>=1.45      # deferred (callable) download_button data
+yt-dlp               # keep current: Instagram changes often (Settings > Maintenance updates it)
+Pillow>=10.1         # ImageFont.load_default(size=...)
+fonttools
+regex                # grapheme clusters (\X) for wrapping and fallback

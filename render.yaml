@@ -1,0 +1,28 @@
+# Render Blueprint: in Render, New → Blueprint → pick this repository. Render builds the Dockerfile.
+services:
+  - type: web
+    name: reel-framer
+    runtime: docker
+    # Free: 0.1 CPU / 512 MB, sleeps after 15 idle minutes, and forgets uploads and settings on
+    # every sleep or deploy. It starts again from this repository's defaults/ folder (save it from
+    # your local copy: Settings → Maintenance). Measured on a real 1080x1920 reel: ffmpeg peaks at
+    # 0.28 GB on one thread at the "veryfast" speed, the app at about 0.1 GB.
+    # To keep uploads across restarts and render faster, use a paid size with a disk, e.g.:
+    #   plan: 1c-2g
+    #   disk:
+    #     name: reel-framer-data
+    #     mountPath: /var/data
+    #     sizeGB: 1
+    plan: free
+    # Closest Render region to India; pick oregon / ohio / virginia / frankfurt if you are elsewhere.
+    region: singapore
+    healthCheckPath: /_stcore/health
+    autoDeployTrigger: commit
+    envVars:
+      # Render generates a long random password; copy it from the service's Environment tab.
+      - key: APP_PASSWORD
+        generateValue: true
+      # Optional Instagram login that survives restarts: add a Secret File named cookies.txt
+      # (Environment → Secret Files) holding a login exported from your local copy.
+      - key: REEL_FRAMER_COOKIES_FILE
+        value: /etc/secrets/cookies.txt
