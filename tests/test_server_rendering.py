@@ -16,7 +16,7 @@ from reel_framer.settings import Settings
 from reel_framer.text import backend, fontconfig
 from reel_framer.text.faces import has_color_glyphs
 
-from .conftest import make_video
+from .conftest import make_video, processes_mentioning
 
 
 def _plan(tmp_path, seconds=1, **overrides):
@@ -70,22 +70,8 @@ def test_abandoned_render_leaves_no_ffmpeg_running(tmp_path):
 
     with pytest.raises(Stop):
         compose.run_video(plan, out, tmp_path / "log.txt", give_up)
-    assert _processes_mentioning(out.name) == []
+    assert processes_mentioning(out.name) == []
 
-
-def _processes_mentioning(text: str) -> list[str]:
-    """PIDs whose command line contains `text` (/proc on Linux, pgrep elsewhere)."""
-    proc = Path("/proc")
-    if proc.is_dir():
-        found = []
-        for entry in proc.iterdir():
-            try:
-                if entry.name.isdigit() and text.encode() in (entry / "cmdline").read_bytes():
-                    found.append(entry.name)
-            except OSError:
-                continue
-        return found
-    return subprocess.run(["pgrep", "-f", text], capture_output=True, text=True).stdout.split()
 
 
 def test_renders_take_turns_and_the_second_says_it_is_waiting(tmp_path, monkeypatch):

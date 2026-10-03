@@ -1,0 +1,96 @@
+# Builds the desktop apps on GitHub's machines (a Windows app can only be built on Windows):
+#   ReelFramer-Windows: ReelFramer-Setup.exe (per-user installer) + ReelFramer-portable.zip
+#   ReelFramer-macOS:   ReelFramer.dmg (Apple Silicon; built on macOS 14, so it runs on 14 and newer)
+# Each job runs the whole test suite on that system, then the packaged app's --self-test
+# (bundled ffmpeg, text shaping, per-script caption fonts, colour emoji, renders with sound,
+# HTTPS), and uploads the app with the self-test report.
+# Start it from the Actions tab (Run workflow, pick the platform) or by pushing a tag like v1.0.1.
+# On private repositories GitHub bills macOS minutes at 10x and Windows at 2x.
+name: desktop apps
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Which app to build
+        type: choice
+        options: [both, windows, macos]
+        default: both
+  push:
+    tags: ["v*"]
+
+env:
+  REEL_FRAMER_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '1.0.0' }}
+
+jobs:
+  windows:
+    if: github.event_name == 'push' || inputs.platform != 'macos'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the build number is the commit count
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: FriBiDi (text shaping) from MSYS2, and Inno Setup
+        run: |
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-ucrt-x86_64-fribidi
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+      - name: Build
+        run: .\desktop\build_windows.ps1
+      - name: Tests on Windows
+        run: |
+          $env:PATH = "$PWD\desktop\build\ffmpeg\bin;C:\msys64\ucrt64\bin;$env:PATH"
+          .venv-win\Scripts\python.exe -m pip install --quiet pytest
+          .venv-win\Scripts\python.exe -m pytest -q -rs tests
+          if ($LASTEXITCODE) { exit 1 }
+      - name: Self-test of the packaged app
+        run: |
+          $run = Start-Process -FilePath "desktop\dist\Reel Framer\Reel Framer.exe" `
+                 -ArgumentList "--self-test", "`"$PWD\selftest.json`"" -Wait -PassThru
+          Get-Content selftest.json
+          if ($run.ExitCode -ne 0) { Write-Host "self-test failed"; exit 1 }
+          if (-not (Get-Content selftest.json | ConvertFrom-Json).https.StartsWith("ok")) { Write-Host "HTTPS failed"; exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReelFramer-Windows
+          path: |
+            desktop/dist/ReelFramer-Setup.exe
+            desktop/dist/ReelFramer-portable.zip
+            selftest.json
+
+  macos:
+    if: github.event_name == 'push' || inputs.platform != 'windows'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: ffmpeg from Homebrew (the build copies it in, with its libraries)
+        run: brew install ffmpeg
+      - name: Build
+        run: |
+          python -m venv .venv
+          ./desktop/build_mac.sh
+      - name: Tests on macOS
+        run: |
+          .venv/bin/python -m pip install --quiet pytest
+          .venv/bin/python -m pytest -q -rs tests
+      - name: Self-test of the packaged app
+        run: |
+          status=0
+          "desktop/dist/Reel Framer.app/Contents/MacOS/Reel Framer" --self-test "$PWD/selftest.json" || status=$?
+          cat selftest.json
+          [ "$status" -eq 0 ] && grep -q '"https": "ok' selftest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReelFramer-macOS
+          path: |
+            desktop/dist/ReelFramer.dmg
+            selftest.json

@@ -18,6 +18,13 @@ MIXED = "Follow करें 🔥 for more"
 needs_font_service = pytest.mark.skipif(backend.name() == "none", reason="no CoreText / fontconfig")
 
 
+def test_complex_script_shaping_is_available():
+    # Without raqm (and the FriBiDi library it loads) Indic text is drawn unshaped: wrong conjuncts.
+    from PIL import features
+
+    assert features.check_feature("raqm"), "Pillow cannot shape text here: FriBiDi is missing"
+
+
 def test_blank_caption_is_none():
     assert render("  \n ", TextStyle(), FRAME_W, max_w=FRAME_W) is None
 

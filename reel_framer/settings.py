@@ -83,6 +83,7 @@ class Settings:
     # Output
     quality: str = "match"          # match: the source's bitrate per pixel; crf: constant quality
     crf: int = 18                   # ffmpeg's H.264 guide: 17-18 is "visually lossless or nearly so"
+    video_encoder: str = ""         # "" = ffmpeg's default H.264 encoder; or e.g. a hardware one
     encoder_preset: str = ""        # x264 speed preset ("" = the encoder's default); faster = less CPU
     output_dir: str = ""            # "" = <home>/output
     # Downloads

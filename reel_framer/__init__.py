@@ -14,6 +14,7 @@ Modules (one concern each):
 - hosting.py      where the app runs: hosted flag, the CPUs a container really allows
 - cookies_export.py  one site's login cookies from a local browser -> cookies.txt for a server
 - server_defaults.py the defaults/ folder a hosted copy without a disk starts from
+- updater.py      newest yt-dlp from PyPI into the packaged desktop app (no pip there)
 - text/           caption rendering (per-script font fallback, wrapping, PNG)
 - ui/             the Streamlit tabs; app.py at the project root is the entry point
 """

@@ -16,10 +16,14 @@ Video bitrate (Settings.quality):
   the encoder's own default rate control is used.
 - "crf": constant quality Settings.crf, when the encoder lists a -crf option
   in `ffmpeg -h encoder=...`; otherwise "match" is used.
+Encoder (Settings.video_encoder): "" = the build's default H.264 encoder;
+otherwise any encoder this build lists for H.264 that takes yuv420p and really
+encodes a test frame here (video_encoders) - e.g. a hardware encoder such as
+VideoToolbox on a Mac, which used about 5x less CPU than x264's default on a
+real 1080x1920 reel. A choice that is not usable falls back to the default.
 Speed (Settings.encoder_preset): one of libx264/libx265's own preset names,
-offered only when the build's H.264 encoder is one of those; "" keeps the
-encoder's default. Faster presets spend less CPU per frame for a slightly
-bigger file, which matters most on small servers.
+offered only when the chosen encoder is one of those; "" keeps the encoder's
+default. Faster presets spend less CPU per frame for a slightly bigger file.
 Audio: copied when the source is already AAC; otherwise AAC at the source's own
 bitrate (the encoder's default when the source reports none).
 
@@ -42,6 +46,9 @@ CHROMA_ALIGN = 2  # yuv420p's 2x2 chroma subsampling
 # encoders (x264 --fullhelp); ffmpeg cannot list them.
 X264_PRESETS = ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow")
 _X264_FAMILY = ("libx264", "libx265")
+# QCIF, the smallest standard H.264 picture size (Annex A, level 1): the test frame that shows a
+# listed encoder really works on this machine (a GPU encoder can be listed without that GPU).
+_PROBE_SIZE = "176x144"
 
 
 class EncoderError(RuntimeError):
@@ -68,9 +75,46 @@ def encoder_options(name: str) -> frozenset[str]:
     return frozenset(re.findall(r"^\s+-(\S+)", _encoder_help(name), re.MULTILINE))
 
 
-def presets() -> tuple[str, ...]:
-    """Speed presets this build's H.264 encoder accepts; () when it is not x264/x265."""
-    return X264_PRESETS if encoder_name() in _X264_FAMILY else ()
+@functools.cache
+def _encoders_listing() -> str:
+    return subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
+
+
+def _pixel_formats(name: str) -> set[str]:
+    match = re.search(r"Supported pixel formats:(.*)", _encoder_help(name))
+    return set(match.group(1).split()) if match else set()
+
+
+@functools.cache
+def _encodes_here(name: str) -> bool:
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"color=size={_PROBE_SIZE}", "-frames:v", "1",
+         "-pix_fmt", OUTPUT_PIX_FMT, "-c:v", name, "-f", "null", "-"],
+        capture_output=True,
+    )
+    return proc.returncode == 0
+
+
+def video_encoders() -> dict[str, str]:
+    """{name: ffmpeg's description} of the usable encoders for the output codec and pixel format."""
+    found: dict[str, str] = {}
+    marker = f"(codec {OUTPUT_VIDEO_CODEC})"
+    for line in _encoders_listing().splitlines():
+        parts = line.split(None, 2)
+        if len(parts) == 3 and parts[0].startswith("V") and marker in parts[2]:
+            name = parts[1]
+            if OUTPUT_PIX_FMT in _pixel_formats(name) and _encodes_here(name):
+                found[name] = parts[2].replace(marker, "").strip()
+    return found
+
+
+def chosen_encoder(choice: str = "") -> str:
+    return choice if choice and choice in video_encoders() else encoder_name()
+
+
+def presets(name: str = "") -> tuple[str, ...]:
+    """Speed presets the encoder accepts; () when it is not x264/x265."""
+    return X264_PRESETS if (name or encoder_name()) in _X264_FAMILY else ()
 
 
 def target_bitrate(source: MediaInfo, frame_w: int, frame_h: int) -> int | None:
@@ -85,10 +129,10 @@ def target_bitrate(source: MediaInfo, frame_w: int, frame_h: int) -> int | None:
 
 
 def video_args(source: MediaInfo, frame_w: int, frame_h: int, quality: str, crf: int,
-               preset: str = "") -> list[str]:
-    name = encoder_name()
+               preset: str = "", encoder: str = "") -> list[str]:
+    name = chosen_encoder(encoder)
     args = ["-c:v", name, "-pix_fmt", OUTPUT_PIX_FMT]
-    if preset and preset in presets():
+    if preset and preset in presets(name):
         args += ["-preset", preset]
     if quality == "crf" and "crf" in encoder_options(name):
         return args + ["-crf", str(crf)]

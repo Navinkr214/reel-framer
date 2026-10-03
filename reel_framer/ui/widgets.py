@@ -4,12 +4,17 @@
 - slider():  a slider whose saved value is clamped into its range first (a value
              saved by an older version must not crash the page)
 - human_size(): bytes as KB / MB / GB for display
+- reveal(): show a file in the computer's file manager (Finder / Explorer / the
+  desktop's default), for copies running on the user's own computer
 
 Not in here: any tab's content (create_tab.py, settings_tab.py).
 Called by: create_tab.py, settings_tab.py.
 """
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
@@ -36,3 +41,12 @@ def human_size(size: float) -> str:
             return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
         size /= _UNIT_STEP
     return f"{size:.1f} {_BYTE_UNITS[-1]}"
+
+
+def reveal(path: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.run(["open", "-R", str(path)], check=False)
+    elif sys.platform == "win32":
+        subprocess.run(["explorer", f"/select,{path}"], check=False)
+    else:
+        subprocess.run(["xdg-open", str(path.parent)], check=False)

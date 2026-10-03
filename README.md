@@ -56,6 +56,50 @@ Access for the app that runs `run.sh`. If links stop downloading, use Settings �
 
 Repost only videos you have the right to use.
 
+## Desktop apps (Mac and Windows)
+
+The same app as a normal desktop app: open **Reel Framer** and it runs in its own window,
+rendering on the computer's own processor and hardware video encoder. That is much faster than
+the free server, and nothing else needs installing: Python, the app and ffmpeg are all inside.
+
+**Mac (`.dmg`)**: build it on a Mac (needs Homebrew's ffmpeg, which the app copies in, and
+`./run.sh` run once), then open the `.dmg` and drag **Reel Framer** to **Applications**:
+
+```bash
+./desktop/build_mac.sh
+```
+
+**Windows (`.exe`)**: a Windows app has to be built on Windows. The **desktop apps** workflow does
+it on GitHub's Windows machines. In the repository go to Actions → *desktop apps* → **Run
+workflow**, and download *ReelFramer-Windows* from the finished run:
+- `ReelFramer-Setup.exe` installs Reel Framer for the current user (no admin rights), with a
+  Start-menu entry and an uninstaller;
+- `ReelFramer-portable.zip` runs from any folder without installing.
+
+The same workflow can build the Mac `.dmg` too (on macOS 14, so that copy runs on macOS 14 and
+newer). Every build runs the whole test suite on that system plus the app's own `--self-test`.
+
+What is the same on both:
+- Settings, banners and downloads live in the user's app-data folder (`~/Library/Application
+  Support/Reel Framer`, `%APPDATA%\Reel Framer`); finished videos go to `Movies/Reel Framer` on a
+  Mac and `Videos\Reel Framer` on Windows. Each finished video has a **Show in folder** button.
+- **Faster renders:** Settings → Output → **Encoder** lists the hardware encoders that really work
+  on that computer (VideoToolbox on a Mac; on Windows whichever of NVIDIA, Intel or AMD's encoders
+  the machine has). On a real 32 s 1080×1920 reel, VideoToolbox used about 5× less CPU than the
+  standard encoder. If a hardware encoder fails on some video, that render falls back on its own.
+- **yt-dlp updates** (when Instagram links stop working): Settings → Maintenance → **Update
+  yt-dlp** downloads the newest one from PyPI, checks it against PyPI's checksum, and the app uses
+  it after you close and reopen it.
+- Captions in any language: macOS picks fonts per script itself; on Windows the app follows the
+  Windows UI font and Windows' own font-link fallback list, then any installed font that has the
+  characters (colour emoji fonts first for emoji).
+- `Reel Framer --self-test report.json` checks an installed app without opening its window.
+
+Not signed yet, so both systems warn on the first open of a downloaded copy:
+- Mac: right-click → **Open**, or System Settings → Privacy & Security → **Open Anyway**. (A copy
+  built on the same Mac opens normally.) Signing needs an Apple Developer account.
+- Windows SmartScreen: **More info → Run anyway**. Signing needs a code-signing certificate.
+
 ## Put it online (Render)
 
 Render runs the app as a normal long-running server. Vercel can't: it runs short serverless

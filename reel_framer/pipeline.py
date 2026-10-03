@@ -29,6 +29,7 @@ Called by: ui/create_tab.py, ui/settings_tab.py, cli.py, tests.
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import io
 import os
@@ -132,7 +133,7 @@ def process_file(source: Path, settings: Settings, report: Report = _quiet, *, t
             report("Waiting for the video ahead to finish", None)
             _RENDER_SLOT.acquire()
         try:
-            compose.run_video(plan, output, log, lambda fraction: report("Rendering", fraction))
+            _render(plan, settings, output, log, report)
         except BaseException:
             output.unlink(missing_ok=True)
             raise
@@ -143,6 +144,24 @@ def process_file(source: Path, settings: Settings, report: Report = _quiet, *, t
         return Result(title or source.stem, output, source)
     finally:
         shutil.rmtree(job_dir, ignore_errors=True)
+
+
+def _render(plan: compose.Plan, settings: Settings, output: Path, log: Path, report: Report) -> None:
+    """Run ffmpeg; if a chosen non-default encoder fails, say so and render with the default one."""
+    def progress(fraction: float) -> None:
+        report("Rendering", fraction)
+
+    try:
+        compose.run_video(plan, output, log, progress)
+    except compose.ComposeError:
+        chosen, default = encoder.chosen_encoder(settings.video_encoder), encoder.encoder_name()
+        if chosen == default:
+            raise
+        report(f"The {chosen} encoder could not render this video; using {default} instead", None)
+        frame = plan.layout.frame
+        args = encoder.video_args(plan.info, frame.w, frame.h, settings.quality, settings.crf,
+                                  settings.encoder_preset)
+        compose.run_video(dataclasses.replace(plan, video_args=tuple(args)), output, log, progress)
 
 
 def preview(source: Path, settings: Settings, at: float | None = None) -> bytes:
@@ -245,7 +264,7 @@ def build_plan(source: Path, settings: Settings, job_dir: Path) -> compose.Plan:
         background_color=settings.background_color,
         blur_sigma=frame.w * settings.blur_pct / 100,
         video_args=tuple(encoder.video_args(info, frame.w, frame.h, settings.quality, settings.crf,
-                                            settings.encoder_preset)),
+                                            settings.encoder_preset, settings.video_encoder)),
         audio_args=tuple(encoder.audio_args(info)),
         threads=hosting.thread_limit(),
     )
@@ -259,14 +278,13 @@ def _caption(side: str, style: TextStyle, frame_w: int, max_w: float, max_h: flo
 
 
 def _output_name(stem: str, out_dir: Path) -> str:
+    """<stem>-framed-<time>[-n].mp4, within the file system's own limit on name length."""
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    suffix = f"-framed-{stamp}.mp4"
-    # Keep the whole name within the file system's own limit on name length.
-    limit = os.pathconf(out_dir, "PC_NAME_MAX") - len(suffix.encode())
-    raw = stem.encode()[:max(0, limit)].decode(errors="ignore")
-    name = f"{raw}{suffix}"
+    limit = paths.max_name_length(out_dir)
     counter = 1
-    while (out_dir / name).exists():  # two renders of one source in the same second
+    while True:
+        tail = f"-framed-{stamp}{f'-{counter}' if counter > 1 else ''}.mp4"
+        name = stem.encode()[:max(0, limit - len(tail.encode()))].decode(errors="ignore") + tail
+        if not (out_dir / name).exists():  # two renders of one source in the same second
+            return name
         counter += 1
-        name = f"{raw}{suffix[:-len('.mp4')]}-{counter}.mp4"
-    return name

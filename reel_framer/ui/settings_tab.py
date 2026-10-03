@@ -32,7 +32,7 @@ from typing import Callable
 import streamlit as st
 from PIL import Image
 
-from .. import assets, cookies_export, downloader, encoder, hosting, layout, paths, pipeline, server_defaults
+from .. import assets, cookies_export, downloader, encoder, hosting, layout, paths, pipeline, server_defaults, updater
 from .. import settings as store
 from ..compose import ComposeError
 from ..media_probe import ProbeError, probe
@@ -256,7 +256,17 @@ def _output(s: Settings) -> None:
     if s.quality == "crf":
         # H.264 quantisers run 0-51 for 8-bit video; lower = better quality, bigger file.
         s.crf = int(st.slider("CRF (lower = better and bigger)", 0, 51, min(51, max(0, s.crf)), key="crf"))
-    speeds = encoder.presets()
+    encoders = encoder.video_encoders()
+    default = encoder.encoder_name()
+    if len(encoders) > 1:
+        options = {"": f"Standard: {encoders.get(default, default)}"} | {
+            name: description for name, description in encoders.items() if name != default}
+        s.video_encoder = choice(
+            "Encoder", options, s.video_encoder, "video_encoder",
+            help="A hardware encoder (e.g. VideoToolbox on a Mac) renders with far less CPU; "
+                 "the standard encoder gives the best picture for the file size.",
+        )
+    speeds = encoder.presets(encoder.chosen_encoder(s.video_encoder))
     if speeds:
         s.encoder_preset = choice(
             "Encoding speed (fastest first)", {"": "Encoder default"} | {p: p for p in speeds},
@@ -336,12 +346,19 @@ def _maintenance(s: Settings) -> None:
                    + (" (on a server, redeploying also installs the newest yt-dlp)." if hosting.hosted() else "."))
         if st.button("Update yt-dlp"):
             with st.spinner("Updating yt-dlp…"):
-                proc = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
-                                      capture_output=True, text=True)
-            if proc.returncode == 0:
-                st.success("Updated. Restart the app (stop it and run ./run.sh again) to use the new version.")
-            else:
-                st.error(proc.stderr.strip() or proc.stdout.strip())
+                if hosting.packaged():  # no pip inside a packaged app: fetch the wheel from PyPI
+                    try:
+                        st.success(f"yt-dlp {updater.update()} is installed. "
+                                   "Close Reel Framer and open it again to use it.")
+                    except updater.UpdateError as exc:
+                        st.error(str(exc))
+                else:
+                    proc = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
+                                          capture_output=True, text=True)
+                    if proc.returncode == 0:
+                        st.success("Updated. Restart the app (stop it and run ./run.sh again) to use it.")
+                    else:
+                        st.error(proc.stderr.strip() or proc.stdout.strip())
         sources = pipeline.recent_sources()
         size = sum(p.stat().st_size for p in sources)
         st.write(f"Videos kept for previews and re-renders: {len(sources)} ({human_size(size)}) "

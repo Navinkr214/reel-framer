@@ -22,14 +22,14 @@ from typing import Callable
 
 import streamlit as st
 
-from .. import assets, paths, pipeline
+from .. import assets, hosting, paths, pipeline
 from .. import settings as store
 from ..compose import ComposeError
 from ..downloader import DownloadError
 from ..encoder import EncoderError
 from ..media_probe import ProbeError
 from ..settings import Settings
-from .widgets import human_size
+from .widgets import human_size, reveal
 
 _FAILURES = (DownloadError, pipeline.JobError, ComposeError, ProbeError, EncoderError, OSError)
 _LOGIN_HINT = (
@@ -141,6 +141,9 @@ def _results() -> None:
                     # deferred-file request in testing and the button spun forever.
                     on_click="ignore",
                 )
+                if not hosting.hosted():
+                    st.button("Show in folder", key=f"reveal-{result.output}",
+                              on_click=reveal, args=(result.output,))
     if shown or state.failures:
         if st.button("Clear list"):
             state.results.clear()
@@ -162,3 +165,5 @@ def _all_finished(current: Settings) -> None:
                             format_func=lambda p: f"{p.name} · {human_size(p.stat().st_size)}")
         st.download_button("Download", data=functools.partial(Path.read_bytes, pick), file_name=pick.name,
                            mime="video/mp4", on_click="ignore", key="all_finished_download")
+        if not hosting.hosted():
+            st.button("Show in folder", key="all_finished_reveal", on_click=reveal, args=(pick,))

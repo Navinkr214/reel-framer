@@ -19,6 +19,8 @@
 - host_cookies_file(): a cookies.txt the host provides ($REEL_FRAMER_COOKIES_FILE,
   e.g. a Render secret file), used when no cookies.txt was uploaded in Settings.
   It survives restarts on hosts without a persistent disk.
+- packaged(): running from a packaged desktop app (PyInstaller sets sys.frozen):
+  there is no pip, so yt-dlp updates come from updater.py.
 
 Not in here: using these facts (compose.py, pipeline.py, ui/*).
 Called by: pipeline.py, ui/password_gate.py, ui/settings_tab.py, tests.
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 
 _CGROUP_ROOT = Path("/sys/fs/cgroup")  # where Linux mounts the process's control groups
@@ -72,6 +75,10 @@ def thread_limit(root: Path = _CGROUP_ROOT) -> int | None:
 def fractional_cpu(root: Path = _CGROUP_ROOT) -> bool:
     quota = cpu_quota(root)
     return quota is not None and quota < 1
+
+
+def packaged() -> bool:
+    return bool(getattr(sys, "frozen", False))
 
 
 def host_cookies_file() -> Path | None:

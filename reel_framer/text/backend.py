@@ -1,11 +1,12 @@
 """Picks the font backend for this machine: the one interface render.py and the
 Settings tab use.
 
-Order: CoreText on macOS (the OS's own per-script fallback), else fontconfig
-when `fc-match` is on PATH, else "none". With "none" a caption is drawn with
-the chosen font only (an uploaded file, or Pillow's bundled font) and gets no
-per-script fallback; the Settings tab says so. $REEL_FRAMER_FONT_BACKEND
-("coretext" / "fontconfig" / "none") forces one, for tests.
+Order: CoreText on macOS (the OS's own per-script fallback), the Windows font
+registry and font links on Windows (windows.py), else fontconfig when `fc-match`
+is on PATH, else "none". With "none" a caption is drawn with the chosen font only
+(an uploaded file, or Pillow's bundled font) and gets no per-script fallback; the
+Settings tab says so. $REEL_FRAMER_FONT_BACKEND ("coretext" / "windows" /
+"fontconfig" / "none") forces one, for tests.
 
 Font setting values (Settings TextStyle.font):
   ""              the OS UI font, bold or regular per TextStyle.bold
@@ -20,10 +21,10 @@ from __future__ import annotations
 import os
 
 from .. import assets
-from . import coretext, fontconfig
+from . import coretext, fontconfig, windows
 from .faces import Base, Face, FaceInfo
 
-_BACKENDS = {"coretext": coretext, "fontconfig": fontconfig}
+_BACKENDS = {"coretext": coretext, "windows": windows, "fontconfig": fontconfig}
 
 
 def _backend():
@@ -36,7 +37,7 @@ def _backend():
 
 def name() -> str:
     backend = _backend()
-    return {coretext: "CoreText", fontconfig: "fontconfig"}.get(backend, "none")
+    return {coretext: "CoreText", windows: "Windows fonts", fontconfig: "fontconfig"}.get(backend, "none")
 
 
 def base_from_setting(font: str, bold: bool) -> Base:
@@ -60,6 +61,13 @@ def face_for(base: Base, size: float) -> Face:
     if backend:
         return backend.face_for(base, size)
     return Face(base.value if base.kind == "file" else "")
+
+
+def warm_up() -> None:
+    """Let the backend prepare in the background (the Windows one reads every installed font once)."""
+    backend = _backend()
+    if backend is windows:
+        windows.warm_up()
 
 
 def list_faces() -> list[FaceInfo]:

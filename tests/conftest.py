@@ -8,6 +8,7 @@ unless the colour really changed.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -56,3 +57,24 @@ def pixel(video: Path, t: float, x: int, y: int) -> tuple[int, int, int]:
 
 def nearest(colour: tuple[int, int, int], palette: dict[str, tuple[int, int, int]]) -> str:
     return min(palette, key=lambda name: sum((a - b) ** 2 for a, b in zip(colour, palette[name])))
+
+
+def processes_mentioning(text: str) -> list[str]:
+    """PIDs whose command line contains `text` (/proc on Linux, CIM on Windows, pgrep elsewhere)."""
+    if sys.platform == "win32":
+        query = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and "
+                 f"$_.CommandLine.Contains('{text}') -and $_.ProcessId -ne $PID }} | "
+                 "ForEach-Object { $_.ProcessId }")
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", query], capture_output=True, text=True).stdout
+        return [pid for pid in out.split() if pid.isdigit()]
+    proc = Path("/proc")
+    if proc.is_dir():
+        found = []
+        for entry in proc.iterdir():
+            try:
+                if entry.name.isdigit() and text.encode() in (entry / "cmdline").read_bytes():
+                    found.append(entry.name)
+            except OSError:
+                continue
+        return found
+    return subprocess.run(["pgrep", "-f", text], capture_output=True, text=True).stdout.split()

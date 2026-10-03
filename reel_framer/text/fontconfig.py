@@ -3,12 +3,8 @@
 - segment(text, base, size): fontconfig's own sorted fallback chain for the base
   face (`fc-match -s`: faces in the configured preference order, keeping only
   those that add coverage). Each grapheme cluster goes to the first face in
-  the chain whose charset has the cluster's first character; the cluster's
-  marks belong to that character's script, so that face draws them too.
-  A cluster Unicode presents as emoji (Emoji_Presentation, or followed by
-  VARIATION SELECTOR-16) goes to the first such face that has colour glyphs,
-  when there is one: plain fonts often carry black outline versions of ❤ ☺ ✈.
-  Whitespace stays with the face before it, so a run is not split at spaces.
+  the chain that has it, by the shared rule in chain.py (emoji to colour faces,
+  whitespace kept with the face before it).
 - list_faces(): the installed faces, via `fc-list`.
 
 Not in here: loading faces or drawing (faces.py, render.py).
@@ -21,14 +17,11 @@ import functools
 import shutil
 import subprocess
 
-import regex
-
-from .faces import Base, Face, FaceInfo, covers, has_color_glyphs
+from . import chain
+from .faces import Base, Face, FaceInfo, covers
 
 _CHAIN_FORMAT = "%{file}\t%{index}\t%{postscriptname}\t%{charset}\n"
 _LIST_FORMAT = "%{postscriptname}\t%{family[0]}\t%{style[0]}\n"
-# Unicode's own emoji presentation: drawn as emoji by default, or followed by U+FE0F.
-_EMOJI = regex.compile(r"\p{Emoji_Presentation}|\uFE0F")
 
 
 def available() -> bool:
@@ -82,26 +75,15 @@ def face_for(base: Base, size: float) -> Face:
 
 def segment(text: str, base: Base, size: float) -> list[tuple[int, int, Face]]:
     head = _head(base)
-    chain = _chain(_pattern(Base("ui", bold=base.bold)) if head else _pattern(base))
-    first = head or (chain[0][0] if chain else Face(""))
-    spans: list[tuple[int, int, Face]] = []
-    for match in regex.finditer(r"\X", text):
-        cluster = match.group()
-        if cluster.isspace() and spans:
-            face = spans[-1][2]
-        else:
-            cp = ord(cluster[0])
-            covering = ([head] if head and covers(head, cluster[0]) else []) + [
-                f for f, starts, ends in chain if _has(starts, ends, cp)]
-            if covering and _EMOJI.search(cluster):
-                face = next((f for f in covering if has_color_glyphs(f)), covering[0])
-            else:
-                face = covering[0] if covering else first
-        if spans and spans[-1][2] == face:
-            spans[-1] = (spans[-1][0], match.end(), face)
-        else:
-            spans.append((match.start(), match.end(), face))
-    return spans
+    links = _chain(_pattern(Base("ui", bold=base.bold)) if head else _pattern(base))
+
+    def candidates(ch: str):
+        if head and covers(head, ch):
+            yield head
+        cp = ord(ch)
+        yield from (face for face, starts, ends in links if _has(starts, ends, cp))
+
+    return chain.segment(text, candidates, head or (links[0][0] if links else Face("")))
 
 
 def list_faces() -> list[FaceInfo]:
