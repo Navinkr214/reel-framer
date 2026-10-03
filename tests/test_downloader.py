@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import http.server
+import sys
 import threading
 
 import pytest
@@ -16,14 +17,26 @@ from reel_framer.settings import Settings
 from .conftest import make_video
 
 
+class _QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args) -> None:
+        pass
+
+
+class _QuietServer(http.server.ThreadingHTTPServer):
+    """Test server that stays quiet when a client hangs up early (yt-dlp does, after probing)."""
+
+    def handle_error(self, request, client_address):
+        if not isinstance(sys.exc_info()[1], ConnectionError):
+            super().handle_error(request, client_address)
+
+
 @pytest.fixture
 def server(tmp_path):
     served = tmp_path / "served"
     served.mkdir()
     make_video(served / "clip.mp4", 320, 568, 1)
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(served))
-    handler.log_message = lambda *a, **k: None
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    handler = functools.partial(_QuietHandler, directory=str(served))
+    httpd = _QuietServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     yield f"http://127.0.0.1:{httpd.server_address[1]}"

@@ -80,10 +80,12 @@ renders also need ffmpeg and minutes of CPU.
   settings**, and push:
   `git add defaults && git commit -m "Server settings" && git push`. Render redeploys with
   them. The shipped `defaults/` only sets the encoding speed to `veryfast`.
-- Rendering is slow. A 32 s 1080×1920 reel needs about 45 s of one Mac core at `veryfast`,
-  so with a tenth of a server CPU expect around 8 minutes or more. Keep the page open while
-  it renders. If the page reloads, the video still appears under **All finished videos**.
-  Setting Frame → Short side to `720` makes renders about twice as fast.
+- Rendering is slow. A 32 s 1080×1920 reel needs 26–45 s of one Mac core at `veryfast`
+  (measured while the Mac was doing different amounts of other work). With a tenth of a server
+  CPU, expect roughly 5–10 minutes, longer if Render's CPU is slower than the Mac's. Keep the
+  page open while it renders. If the page reloads, the video still appears under
+  **All finished videos**. Setting Frame → Short side to `720` made the same render about
+  1.6× faster (16 instead of 26 CPU-seconds).
 - **Instagram login:** cloud servers are asked to log in far more often than home connections.
   In Reel Framer **on your Mac**, open Settings → Instagram login → **Export a login for a
   server copy**, then **Read the login** and **Download**. In Render, add the file under
@@ -178,5 +180,6 @@ CI runs them inside the Linux image as well.
 
 - A line mixing right-to-left text (Arabic, Hebrew) with other scripts shapes each part correctly, but lays the parts out left to right.
 - Uploads are limited to 200 MB per file (Streamlit's default; `server.maxUploadSize` in `.streamlit/config.toml` changes it).
-- Rendering needs CPU: a 32 s 1080×1920 reel took 16 s on this Mac using all cores at `veryfast`
-  (30 s at the default speed), or 32 s / 82 s on a single thread.
+- Rendering needs CPU. A 32 s 1080×1920 reel took 16 s on this Mac using all cores at `veryfast`
+  and 30 s at the default speed. On one thread it took 26–45 CPU-seconds at `veryfast` and
+  82–88 at the default speed; the range comes from how busy the Mac was.
